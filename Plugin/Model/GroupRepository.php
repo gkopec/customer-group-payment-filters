@@ -3,7 +3,9 @@
 namespace GalacticLabs\CustomerGroupPaymentFilters\Plugin\Model;
 
 use GalacticLabs\CustomerGroupPaymentFilters\Api\PaymentFilterRepositoryInterface;
+use GalacticLabs\CustomerGroupPaymentFilters\Api\ShippingFilterRepositoryInterface;
 use GalacticLabs\CustomerGroupPaymentFilters\Api\Data\PaymentFilterInterfaceFactory;
+use GalacticLabs\CustomerGroupPaymentFilters\Api\Data\ShippingFilterInterfaceFactory;
 use Magento\Customer\Api\Data\GroupExtensionFactory;
 use Magento\Customer\Api\GroupRepositoryInterface;
 use Magento\Framework\App\RequestInterface;
@@ -26,18 +28,24 @@ class GroupRepository
      * @var PaymentFilterInterfaceFactory
      */
     private $filterInterfaceFactory;
+    private ShippingFilterRepositoryInterface $shippingFilterRepository;
+    private ShippingFilterInterfaceFactory $shippingFilterFactory;
 
     public function __construct(
         RequestInterface $request,
         PaymentFilterRepositoryInterface $paymentFilterRepository,
+        ShippingFilterRepositoryInterface $shippingFilterRepository,
         GroupExtensionFactory $extensionFactory,
-        PaymentFilterInterfaceFactory $filterInterfaceFactory
+        PaymentFilterInterfaceFactory $filterInterfaceFactory,
+        ShippingFilterInterfaceFactory $shippingFilterFactory
     )
     {
         $this->request = $request;
         $this->paymentFilterRepository = $paymentFilterRepository;
+        $this->shippingFilterRepository = $shippingFilterRepository;
         $this->extensionFactory = $extensionFactory;
         $this->filterInterfaceFactory = $filterInterfaceFactory;
+        $this->shippingFilterFactory = $shippingFilterFactory;
     }
 
     /**
@@ -50,14 +58,17 @@ class GroupRepository
      */
     public function afterGetById(GroupRepositoryInterface $subject, \Magento\Customer\Api\Data\GroupInterface $customerGroup)
     {
-        $disallowedPaymentOptions = $this->paymentFilterRepository->getByCustomerGroupId($customerGroup->getId());
-
         $extensionAttributes = $customerGroup->getExtensionAttributes();
         if($extensionAttributes == null){
             $extensionAttributes = $this->extensionFactory->create();
         }
 
-        $extensionAttributes->setDisallowedPaymentOptions($disallowedPaymentOptions);
+        $disallowedPaymentOptions = $this->paymentFilterRepository->getByCustomerGroupId($customerGroup->getId());
+        $disallowedShippingOptions = $this->shippingFilterRepository->getByCustomerGroupId($customerGroup->getId());
+        $extensionAttributes
+            ->setDisallowedPaymentOptions($disallowedPaymentOptions)
+            ->setDisallowedShippingOptions($disallowedShippingOptions);
+
         $customerGroup->setExtensionAttributes($extensionAttributes);
 
         return $customerGroup;
@@ -80,11 +91,23 @@ class GroupRepository
                 $disallowedPaymentOptions = [];
             }
 
+            $disallowedShippingOptions = $this->request->getParam('disallowed_shipping_options');
+
+            if($disallowedShippingOptions == null){
+                $disallowedShippingOptions = [];
+            }
+
+
             $paymentFilter = $this->filterInterfaceFactory->create();
             $paymentFilter->setCustomerGroupId($customerGroup->getId());
             $paymentFilter->setDisallowedPaymentOptions($disallowedPaymentOptions);
 
+            $shippingFilter = $this->shippingFilterFactory->create();
+            $shippingFilter->setCustomerGroupId($customerGroup->getId());
+            $shippingFilter->setDisallowedShippingOptions($disallowedShippingOptions);
+
             $this->paymentFilterRepository->save($paymentFilter);
+            $this->shippingFilterRepository->save($shippingFilter);
         } catch (\Exception $e) { /** TODO: Do something with the exception */}
 
         return $customerGroup;
@@ -103,6 +126,12 @@ class GroupRepository
 
         if($paymentFilter->getCustomerGroupId() != null){
             $this->paymentFilterRepository->delete($paymentFilter);
+        }
+
+        $shippingFilter = $this->shippingFilterFactory->getByCustomerGroupId($id);
+
+        if($shippingFilter->getCustomerGroupId() != null){
+            $this->shippingFilterRepository->delete($shippingFilter);
         }
     }
 

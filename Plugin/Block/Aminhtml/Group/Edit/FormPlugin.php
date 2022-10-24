@@ -6,6 +6,8 @@ use Closure;
 use Magento\Framework\Registry;
 use Magento\Customer\Block\Adminhtml\Group\Edit\Form as CustomerGroupForm;
 use Magento\Customer\Controller\RegistryConstants;
+use Magento\Framework\App\Config\ScopeConfigInterface;
+use Magento\Shipping\Model\Config\Source\Allmethods;
 
 class FormPlugin
 {
@@ -25,53 +27,68 @@ class FormPlugin
      * @var \Magento\Customer\Api\GroupRepositoryInterface
      */
     private $groupRepository;
+    private ScopeConfigInterface $scopeConfig;
+    private Allmethods $shippingAllmethods;
 
     public function __construct(
         \Magento\Payment\Helper\Data $paymentHelper,
         \Magento\Framework\Registry $coreRegistry,
         \Magento\Customer\Api\Data\GroupInterfaceFactory $groupDataFactory,
-        \Magento\Customer\Api\GroupRepositoryInterface $groupRepository
+        \Magento\Customer\Api\GroupRepositoryInterface $groupRepository,
+        ScopeConfigInterface $scopeConfig,
+        Allmethods $shippingAllmethods
     )
     {
         $this->paymentHelper = $paymentHelper;
         $this->coreRegistry = $coreRegistry;
         $this->groupDataFactory = $groupDataFactory;
         $this->groupRepository = $groupRepository;
+        $this->scopeConfig = $scopeConfig;
+        $this->shippingAllmethods = $shippingAllmethods;
     }
 
     public function aroundGetFormHtml(CustomerGroupForm $subject, Closure $proceed)
     {
         $customerGroup = $this->getCustomerGroup();
-        $disabledPaymentMethods = $this->getDisallowedPaymentOptions($customerGroup);
         $form = $subject->getForm();
 
         if (is_object($form)) {
-            $fieldset = $form->addFieldset(
-                'disallowed_payment_options_fieldset',
-                [
-                    'legend' => __('Disallowed Payment Options')
-                ]
-            );
+            $disabledPaymentMethods = $this->getDisallowedPaymentOptions($customerGroup);
+            $this->addField($form, $disabledPaymentMethods, $this->getPaymentMethodsList(), 'Payment');
 
-            $fieldset->addField(
-                'disallowed_payment_options_multiselect',
-                'multiselect',
-                [
-                    'name' => 'disallowed_payment_options[]',
-                    'label' => __('Disallowed Payment Options'),
-                    'id' => 'disallowed_payment_options',
-                    'title' => __('Disallowed Payment Options'),
-                    'required' => false,
-                    'note' => 'Multi select the payment options that you do NOT want this customer group to be able to use.',
-                    'value' => $disabledPaymentMethods,
-                    'values' => $this->getPaymentMethodsList()
-                ]
-            );
+            $disabledShippingMethods = $this->getDisallowedShippingOptions($customerGroup);
+            $this->addField($form, $disabledShippingMethods, $this->getShippingMethodsList(), 'Shipping');
 
             $subject->setForm($form);
         }
 
         return $proceed();
+    }
+
+    protected function addField($form, $options, $values, $label)
+    {
+        $code = \Safe\sprintf('disallowed_%s_options', strtolower($label));
+        $fieldset = $form->addFieldset(
+            $code.'_fieldset',
+            [
+                'legend' => __("Disallowed $label Options")
+            ]
+        );
+
+        $fieldset->addField(
+            $code.'_multiselect',
+            'multiselect',
+            [
+                'name' => $code.'[]',
+                'label' => __("Disallowed $label Options"),
+                'id' => $code,
+                'title' => __("Disallowed $label Options"),
+                'required' => false,
+                'note' => 'Multi select the'. strtolower($label) .'options that you do NOT want this customer group to be able to use.',
+                'value' => $options,
+                'values' => $values
+            ]
+        );
     }
 
     /**
@@ -94,6 +111,21 @@ class FormPlugin
                 'label'  => "{$paymentMethodDescription} ({$paymentMethodCode})"
             );
         }, array_keys($paymentOptions), $paymentOptions));
+    }
+
+    private function getShippingMethodsList()
+    {
+        $carriers = $this->scopeConfig->getValue(
+            'carriers',
+            \Magento\Store\Model\ScopeInterface::SCOPE_STORE
+        );
+
+        return array_filter(array_map(function ($code, $carrier) {
+            return array(
+                'value' => $code,
+                'label'  => $carrier['title']
+            );
+        }, array_keys($carriers), $carriers));
     }
 
     /**
@@ -134,5 +166,18 @@ class FormPlugin
         }
 
         return $disallowedPaymentMethods;
+    }
+
+    private function getDisallowedShippingOptions($customerGroup)
+    {
+        if ($customerGroup->getExtensionAttributes() !== null && $customerGroup->getExtensionAttributes()->getDisallowedShippingOptions() !== null) {
+            $disallowedShippingOptions = $customerGroup->getExtensionAttributes()
+                ->getDisallowedShippingOptions()
+                ->getDisallowedShippingOptions();
+        } else {
+            $disallowedShippingOptions = [];
+        }
+
+        return $disallowedShippingOptions;
     }
 }

@@ -6,5 +6,10 @@
                 <resource ref="Magento_Customer::group"/>
             </resources>
         </attribute>
+        <attribute code="disallowed_shipping_options" type="\GalacticLabs\CustomerGroupPaymentFilters\Api\Data\ShippingFilterInterface">
+            <resources>
+                <resource ref="Magento_Customer::group"/>
+            </resources>
+        </attribute>
     </extension_attributes>
 </config>

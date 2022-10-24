@@ -4,7 +4,7 @@ namespace GalacticLabs\CustomerGroupPaymentFilters\Model\ResourceModel;
 
 use Magento\Framework\Model\ResourceModel\Db\AbstractDb;
 
-class PaymentFilter extends AbstractDb
+class ShippingFilter extends AbstractDb
 {
     protected $_isPkAutoIncrement = false;
 
@@ -15,6 +15,6 @@ class PaymentFilter extends AbstractDb
      */
     protected function _construct()
     {
-        $this->_init('customer_group_disallowed_payment_options', 'customer_group_id');
+        $this->_init('customer_group_disallowed_shipping_options', 'customer_group_id');
     }
 }
